@@ -23,8 +23,18 @@ export default function App() {
         quality: 1,
       });
 
-      if (!result.canceled) {
-        setImage(result.assets[0]);
+      if (!result.canceled && result.assets.length > 0) {
+        const selectedImage = result.assets[0];
+
+        const fileInfo = await FileSystem.getInfoAsync(selectedImage.uri);
+        const MAX_SIZE = 50 * 1024 * 1024;
+
+        if (fileInfo.size > MAX_SIZE) {
+          Alert.alert('File Too Large', 'Image size must not exceed 50MB. Please choose a smaller file.');
+          return;
+        }
+
+        setImage(selectedImage);
         setConvertedUri(null);
         setShowInfo(false);
       }
@@ -96,28 +106,30 @@ export default function App() {
   return (
     <ScrollView contentContainerStyle={styles.scrollContainer}>
       <View style={styles.container}>
-        <Text style={styles.title}>Smart Converter</Text>
+        <Text style={styles.title}>HEIC to JPG</Text>
 
         {showInfo && (
           <>
             <View style={styles.infoBox}>
               <Text style={styles.infoText}>
-                 Convert HEIC, JPG, PNG, WebP, or PDF into JPG, PNG, WebP, or PDF. Fast & simple!
-              </Text>
+            📷 Convert HEIC to JPG, PNG, PDF, or WEBP effortlessly.{"\n"}
+            ⚡ Fast, simple, and works offline.
+          </Text>
             </View>
             <MaterialIcons
               name="arrow-downward"
               size={28}
               color="#2563EB"
-              style={{ marginBottom: 8 }}
+              style={{ marginBottom: 12 }}
             />
           </>
         )}
 
-        <TouchableOpacity style={styles.button} onPress={pickImage}>
-          <Text style={styles.buttonText}>Pick Image</Text>
+        <TouchableOpacity style={styles.primaryButton} onPress={pickImage}>
+          <Text style={styles.buttonText}>Pick an Image</Text>
         </TouchableOpacity>
 
+        {/* ✅ Preview selected image */}
         {image && (
           <>
             <Image source={{ uri: image.uri }} style={styles.imagePreview} />
@@ -128,10 +140,18 @@ export default function App() {
                 {['jpg', 'png', 'pdf', 'webp'].map((f) => (
                   <TouchableOpacity
                     key={f}
-                    style={[styles.formatButton, format === f && styles.formatSelected]}
+                    style={[
+                      styles.formatButton,
+                      format === f && styles.formatSelected
+                    ]}
                     onPress={() => setFormat(f)}
                   >
-                    <Text style={styles.formatText}>{f.toUpperCase()}</Text>
+                    <Text style={[
+                      styles.formatText,
+                      format === f ? styles.formatTextSelected : styles.formatTextDefault
+                    ]}>
+                      {f.toUpperCase()}
+                    </Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -151,9 +171,9 @@ export default function App() {
           </>
         )}
 
+        {/* ✅ Preview converted image */}
         {convertedUri && (
           <>
-            <Text style={styles.previewLabel}>Converted Image:</Text>
             <Image source={{ uri: convertedUri }} style={styles.imagePreview} />
             <TouchableOpacity style={styles.shareButton} onPress={shareConverted}>
               <Text style={styles.buttonText}>Share Image</Text>
@@ -165,57 +185,47 @@ export default function App() {
   );
 }
 
-
 const styles = StyleSheet.create({
   scrollContainer: {
     flexGrow: 1,
-    backgroundColor: '#F9FAFB',
-    minHeight: '100%',
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 60,
   },
   container: {
     flex: 1,
     alignItems: 'center',
-    paddingTop: 60,
-    paddingHorizontal: 20,
-    backgroundColor: '#F9FAFB',
+    paddingHorizontal: 24,
+    backgroundColor: '#FFFFFF',
   },
   title: {
     fontSize: 32,
     fontWeight: '800',
     color: '#002855',
-    marginBottom: 30,
+    marginBottom: 20,
     textAlign: 'center',
   },
   infoBox: {
     backgroundColor: '#E0F2FE',
     padding: 14,
-    marginHorizontal: 12,
+    borderRadius: 12,
     marginBottom: 20,
-    borderRadius: 16,
-    borderLeftWidth: 5,
-    borderLeftColor: '#2563EB',
-    shadowColor: '#2563EB',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    width: '100%',
   },
   infoText: {
     color: '#1E3A8A',
-    fontSize: 16,
-    textAlign: 'center',
+    fontSize: 15,
     fontWeight: '500',
+    textAlign: 'center',
   },
-  button: {
+  primaryButton: {
     backgroundColor: '#2563EB',
     paddingVertical: 14,
-    paddingHorizontal: 40,
+    paddingHorizontal: 30,
     borderRadius: 16,
-    marginTop: 12,
-    width: '80%',
+    width: '90%',
     alignItems: 'center',
     shadowColor: '#2563EB',
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.3,
     shadowOffset: { width: 0, height: 4 },
     shadowRadius: 8,
     elevation: 6,
@@ -223,26 +233,26 @@ const styles = StyleSheet.create({
   convertButton: {
     backgroundColor: '#10B981',
     paddingVertical: 14,
-    paddingHorizontal: 40,
+    paddingHorizontal: 30,
     borderRadius: 16,
     marginTop: 28,
-    width: '80%',
+    width: '90%',
     alignItems: 'center',
     shadowColor: '#10B981',
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.3,
     shadowOffset: { width: 0, height: 4 },
     shadowRadius: 8,
     elevation: 6,
   },
   shareButton: {
-    backgroundColor: '#1E40AF',
+    backgroundColor: '#2563EB',
     paddingVertical: 14,
-    paddingHorizontal: 40,
+    paddingHorizontal: 30,
     borderRadius: 16,
     marginTop: 20,
-    width: '80%',
+    width: '90%',
     alignItems: 'center',
-    shadowColor: '#1E40AF',
+    shadowColor: '#2563EB',
     shadowOpacity: 0.2,
     shadowOffset: { width: 0, height: 3 },
     shadowRadius: 6,
@@ -256,17 +266,17 @@ const styles = StyleSheet.create({
   imagePreview: {
     width: '100%',
     height: 240,
-    borderRadius: 18,
+    borderRadius: 16,
     marginTop: 24,
     resizeMode: 'cover',
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E2E8F0',
+    backgroundColor: '#F3F4F6',
+    borderColor: '#E5E7EB',
     borderWidth: 1,
   },
   formatBox: {
-    marginTop: 30,
-    alignItems: 'center',
+    marginTop: 32,
     width: '100%',
+    alignItems: 'center',
   },
   formatLabel: {
     fontSize: 16,
@@ -278,7 +288,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     flexWrap: 'wrap',
-    gap: 10,
   },
   formatButton: {
     paddingVertical: 10,
@@ -286,20 +295,19 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: '#E5E7EB',
     marginHorizontal: 6,
+    marginVertical: 6,
   },
   formatSelected: {
-    backgroundColor: '#2563EB',
+    backgroundColor: '#002855',
   },
   formatText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#fff',
   },
-  previewLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginTop: 34,
-    marginBottom: 14,
+  formatTextDefault: {
     color: '#111827',
+  },
+  formatTextSelected: {
+    color: '#FFFFFF',
   },
 });
