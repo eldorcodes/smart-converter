@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import {
   View, Text, Image, StyleSheet, Alert,
-  TouchableOpacity, ActivityIndicator, ScrollView
+  TouchableOpacity, ActivityIndicator, ScrollView, Platform
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { API_URL } from '@env';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import * as ImageManipulator from 'expo-image-manipulator';
 
 export default function App() {
   const [image, setImage] = useState(null);
@@ -17,31 +18,52 @@ export default function App() {
   const [showInfo, setShowInfo] = useState(true);
 
   const pickImage = async () => {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 1,
-      });
+  try {
+    const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    quality: 1,
+});
 
-      if (!result.canceled && result.assets.length > 0) {
-        const selectedImage = result.assets[0];
+    if (!result.canceled && result.assets.length > 0) {
+      let selected = result.assets[0];
+      let uri = selected.uri;
+      const MAX_SIZE = 50 * 1024 * 1024;
 
-        const fileInfo = await FileSystem.getInfoAsync(selectedImage.uri);
-        const MAX_SIZE = 50 * 1024 * 1024;
+      let fileInfo = await FileSystem.getInfoAsync(uri);
+      console.log('🧾 Original file size (bytes):', fileInfo.size);
 
+      // ✅ Compress & resize if size exceeds limit
+      if (fileInfo.size > MAX_SIZE) {
+        const manipulated = await ImageManipulator.manipulateAsync(
+          uri,
+          [{ resize: { width: 1500 } }], // resize for optimization
+          { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+        );
+        uri = manipulated.uri;
+
+        // Get new size
+        fileInfo = await FileSystem.getInfoAsync(uri);
+        console.log('✅ Compressed size (bytes):', fileInfo.size);
+
+        // Still too big?
         if (fileInfo.size > MAX_SIZE) {
-          Alert.alert('File Too Large', 'Image size must not exceed 50MB. Please choose a smaller file.');
+          Alert.alert(
+            'File Too Large',
+            'Even after compression, the image is too large. Please select a smaller image.'
+          );
           return;
         }
-
-        setImage(selectedImage);
-        setConvertedUri(null);
-        setShowInfo(false);
       }
-    } catch (err) {
-      Alert.alert('Error selecting image', err.message);
+
+      setImage({ ...selected, uri });
+      setConvertedUri(null);
+      setShowInfo(false);
     }
-  };
+  } catch (err) {
+    console.error('📸 Image pick error:', err);
+    Alert.alert('Image Error', err.message || 'Something went wrong.');
+  }
+};
 
   const convertImage = async () => {
     if (!image) return;
