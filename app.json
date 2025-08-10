@@ -2,7 +2,7 @@
   "expo": {
     "name": "Smart Converter",
     "slug": "smart-converter",
-    "version": "1.0.7",
+    "version": "1.1.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -12,30 +12,34 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+
+    "plugins": ["expo-media-library"],
+
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "io.studybridge.smartconverter",
-      "buildNumber": "1.0.7",
+      "buildNumber": "1.1.1",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryAddUsageDescription": "We need permission to save your converted images to Photos.",
+        "NSPhotoLibraryUsageDescription": "Allow access to store images you convert."
       }
     },
+
     "android": {
       "package": "io.studybridge.smartconverter",
-      "versionCode": 8,
+      "versionCode": 13,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": ["READ_MEDIA_IMAGES"] 
     },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
+
+    "web": { "favicon": "./assets/favicon.png" },
     "extra": {
-      "eas": {
-        "projectId": "a9aad8a2-e8d5-42d6-a548-3dd6b87ae5b4"
-      }
+      "eas": { "projectId": "a9aad8a2-e8d5-42d6-a548-3dd6b87ae5b4" }
     }
   }
 }
