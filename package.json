@@ -14,18 +14,32 @@
     "expo-file-system": "~18.1.11",
     "expo-image-manipulator": "~13.1.7",
     "expo-image-picker": "^16.1.4",
+    "expo-intent-launcher": "~12.1.5",
+    "expo-media-library": "~17.1.7",
     "expo-sharing": "~13.1.5",
     "expo-status-bar": "~2.2.3",
+    "lottie-react-native": "7.2.2",
     "react": "19.0.0",
     "react-native": "0.79.5",
     "react-native-dotenv": "^3.4.11",
-    "react-native-vector-icons": "^10.3.0",
-    "expo-media-library": "~17.1.7",
-    "lottie-react-native": "7.2.2",
-    "expo-intent-launcher": "~12.1.5"
+    "react-native-vector-icons": "^10.3.0"
   },
   "devDependencies": {
-    "@babel/core": "^7.20.0"
+    "@babel/core": "^7.20.0",
+    "@expo/config-plugins": "~10.1.1",
+    "@expo/prebuild-config": "~9.0.0",
+    "eas-cli": "^16.17.4"
+  },
+  "overrides": {
+    "@expo/config-plugins": "~10.1.1",
+    "@expo/prebuild-config": "~9.0.0"
+  },
+  "expo": {
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "listUnknownPackages": false
+      }
+    }
   },
   "private": true
 }
