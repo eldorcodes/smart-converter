@@ -1,3 +1,4 @@
+// App.js
 import React, { useState } from 'react';
 import {
   View,
@@ -17,15 +18,19 @@ import * as Sharing from 'expo-sharing';
 import * as MediaLibrary from 'expo-media-library';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as IntentLauncher from 'expo-intent-launcher';
-import LottieView from 'lottie-react-native';
-import { API_URL } from '@env';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+
+import SuccessModal from './components/SuccessModal';
+import FailModal from './components/FailModal';
+// ⛔️ Removed LoadingOverlay to avoid any chance of an invisible full-screen touch blocker
 
 const { height: screenHeight } = Dimensions.get('window');
 
 // Cache-busting helpers for Image preview vs. filesystem
 const bust = (p) => `${p}?t=${Date.now()}`; // append timestamp for RN Image cache
 const base = (u) => (u ? u.split('?')[0] : u); // strip ?t= for filesystem/sharing
+
+const API_URL = process.env.EXPO_PUBLIC_API_URL || "https://study-smart-api-1076720753233.us-west1.run.app";
 
 export default function App() {
   const [image, setImage] = useState(null);
@@ -35,6 +40,30 @@ export default function App() {
   const [showInfo, setShowInfo] = useState(true);
   const [isRotating, setIsRotating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Modals
+  const [successVisible, setSuccessVisible] = useState(false);
+  const [successTitle, setSuccessTitle] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+  const [failVisible, setFailVisible] = useState(false);
+  const [failTitle, setFailTitle] = useState('');
+  const [failMessage, setFailMessage] = useState('');
+
+  const blobToBase64 = (blob) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+
+  const getMimeFromFormat = (f) => {
+    if (f === 'jpg' || f === 'jpeg') return 'image/jpeg';
+    if (f === 'png') return 'image/png';
+    if (f === 'webp') return 'image/webp';
+    if (f === 'pdf') return 'application/pdf';
+    return `image/${f}`;
+  };
 
   const pickImage = async () => {
     try {
@@ -60,10 +89,9 @@ export default function App() {
 
           info = await FileSystem.getInfoAsync(uri);
           if (info.size > MAX_SIZE) {
-            Alert.alert(
-              'File Too Large',
-              'Even after compression, the image is too large. Please select a smaller image.'
-            );
+            setFailTitle('File Too Large');
+            setFailMessage('Even after compression, the image is too large. Please select a smaller image.');
+            setFailVisible(true);
             return;
           }
         }
@@ -73,16 +101,10 @@ export default function App() {
         setShowInfo(false);
       }
     } catch (err) {
-      Alert.alert('Image Error', err?.message || 'Something went wrong.');
+      setFailTitle('Image Error');
+      setFailMessage(err?.message || 'Something went wrong.');
+      setFailVisible(true);
     }
-  };
-
-  const getMimeFromFormat = (f) => {
-    if (f === 'jpg' || f === 'jpeg') return 'image/jpeg';
-    if (f === 'png') return 'image/png';
-    if (f === 'webp') return 'image/webp';
-    if (f === 'pdf') return 'application/pdf';
-    return `image/${f}`;
   };
 
   const convertImage = async () => {
@@ -118,21 +140,17 @@ export default function App() {
 
       // Bust cache so preview updates
       setConvertedUri(bust(outputPath));
-      Alert.alert('Success', `Image converted to ${format.toUpperCase()}`);
+      setSuccessTitle('Success');
+      setSuccessMessage(`Image converted to ${format.toUpperCase()}`);
+      setSuccessVisible(true);
     } catch (err) {
-      Alert.alert('Conversion failed', err?.message || 'Please try again.');
+      setFailTitle('Conversion failed');
+      setFailMessage(err?.message || 'Please try again.');
+      setFailVisible(true);
     } finally {
       setIsConverting(false);
     }
   };
-
-  const blobToBase64 = (blob) =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result.split(',')[1]);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
 
   const openPdf = async () => {
     const path = base(convertedUri);
@@ -147,10 +165,18 @@ export default function App() {
           flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
         });
       } catch (e) {
-        Alert.alert('No PDF app found', 'Please install a PDF viewer to open this file.');
+        setFailTitle('No PDF app found');
+        setFailMessage('Please install a PDF viewer to open this file.');
+        setFailVisible(true);
       }
     } else {
-      await Sharing.shareAsync(path, { mimeType: 'application/pdf' });
+      try {
+        await Sharing.shareAsync(path, { mimeType: 'application/pdf' });
+      } catch (e) {
+        setFailTitle('Open PDF failed');
+        setFailMessage('Could not open the PDF.');
+        setFailVisible(true);
+      }
     }
   };
 
@@ -162,7 +188,9 @@ export default function App() {
       const mimeType = getMimeFromFormat(format);
       const isAvailable = await Sharing.isAvailableAsync();
       if (!isAvailable) {
-        Alert.alert('Sharing not available on this device');
+        setFailTitle('Sharing unavailable');
+        setFailMessage('Sharing is not available on this device.');
+        setFailVisible(true);
         return;
       }
       await Sharing.shareAsync(path, {
@@ -170,8 +198,14 @@ export default function App() {
         dialogTitle: 'Share converted file',
         UTI: Platform.OS === 'ios' && format !== 'pdf' ? 'public.image' : undefined,
       });
+
+      setSuccessTitle('Shared');
+      setSuccessMessage('Share sheet opened.');
+      setSuccessVisible(true);
     } catch (e) {
-      Alert.alert('Share Error', e?.message || 'Could not open share sheet.');
+      setFailTitle('Share failed');
+      setFailMessage(e?.message || 'Please try again.');
+      setFailVisible(true);
     }
   };
 
@@ -182,7 +216,9 @@ export default function App() {
       if (!path) return;
 
       if (format === 'pdf') {
-        Alert.alert('PDF cannot be saved to Photos', 'Use “Share” → “Save to Files” to store the PDF.');
+        setFailTitle('PDF not supported in Photos');
+        setFailMessage('Use “Share → Save to Files” to store the PDF.');
+        setFailVisible(true);
         return;
       }
 
@@ -190,7 +226,9 @@ export default function App() {
 
       const info = await FileSystem.getInfoAsync(path);
       if (!info.exists) {
-        Alert.alert('File Missing', 'Please convert again and then save.');
+        setFailTitle('File Missing');
+        setFailMessage('Please convert again and then save.');
+        setFailVisible(true);
         return;
       }
 
@@ -198,7 +236,9 @@ export default function App() {
       if (perm.status !== 'granted') {
         perm = await MediaLibrary.requestPermissionsAsync();
         if (perm.status !== 'granted') {
-          Alert.alert('Permission needed', 'Allow Photos access to save images.');
+          setFailTitle('Permission needed');
+          setFailMessage('Allow Photos access to save images.');
+          setFailVisible(true);
           return;
         }
       }
@@ -214,9 +254,13 @@ export default function App() {
 
       const asset = await MediaLibrary.createAssetAsync(saveUri);
       await MediaLibrary.createAlbumAsync('Converted Images', asset, false).catch(() => {});
-      Alert.alert('Saved', 'Image saved to your Photos.');
+      setSuccessTitle('Success');
+      setSuccessMessage('Image saved to your Photos');
+      setSuccessVisible(true);
     } catch (e) {
-      Alert.alert('Save failed', e?.message || 'Could not save. Try Share instead.');
+      setFailTitle('Save failed');
+      setFailMessage(e?.message || 'Please try Share instead.');
+      setFailVisible(true);
     } finally {
       setIsSaving(false);
     }
@@ -228,7 +272,9 @@ export default function App() {
       if (!current) return;
 
       if (format === 'pdf') {
-        Alert.alert('Rotation not available for PDF', 'Rotate after exporting as JPG/PNG/WEBP, or use a PDF tool.');
+        setFailTitle('Rotation not available for PDF');
+        setFailMessage('Export as image first or use a PDF tool.');
+        setFailVisible(true);
         return;
       }
 
@@ -252,9 +298,13 @@ export default function App() {
 
       // Bust cache to refresh UI preview
       setConvertedUri(bust(destPath));
-      Alert.alert('Success', 'Image rotated.');
+      setSuccessTitle('Success');
+      setSuccessMessage('Image rotated.');
+      setSuccessVisible(true);
     } catch (e) {
-      Alert.alert('Rotate Error', e?.message || 'Could not rotate image.');
+      setFailTitle('Rotate failed');
+      setFailMessage(e?.message || 'Could not rotate image.');
+      setFailVisible(true);
     } finally {
       setIsRotating(false);
     }
@@ -279,15 +329,15 @@ export default function App() {
               </Text>
             </View>
             <MaterialIcons
-            name="arrow-downward"
-            size={28}
-            color="#2563EB"
-            style={{ marginBottom: 12 }}
-          />
+              name="arrow-downward"
+              size={28}
+              color="#2563EB"
+              style={{ marginBottom: 12 }}
+            />
           </>
         )}
 
-        <TouchableOpacity style={styles.primaryButton} onPress={pickImage}>
+        <TouchableOpacity style={styles.primaryButton} onPress={pickImage} disabled={isConverting || isRotating || isSaving}>
           <Text style={styles.buttonText}>Pick an Image</Text>
         </TouchableOpacity>
 
@@ -303,6 +353,7 @@ export default function App() {
                     key={f}
                     style={[styles.formatButton, format === f && styles.formatSelected]}
                     onPress={() => setFormat(f)}
+                    disabled={isConverting || isRotating || isSaving}
                   >
                     <Text
                       style={[
@@ -336,7 +387,7 @@ export default function App() {
             {format === 'pdf' ? (
               <View style={[styles.imagePreview, { justifyContent: 'center', alignItems: 'center' }]}>
                 <Text style={{ color: '#1F2937', fontWeight: '600', marginBottom: 10 }}>PDF ready</Text>
-                <TouchableOpacity style={styles.shareButton} onPress={openPdf}>
+                <TouchableOpacity style={styles.shareButton} onPress={openPdf} disabled={isConverting || isRotating || isSaving}>
                   <Text style={styles.buttonText}>Open PDF</Text>
                 </TouchableOpacity>
               </View>
@@ -350,15 +401,17 @@ export default function App() {
                   style={styles.rotateButton}
                   onPress={() => rotateConverted(-90)}
                   disabled={isRotating}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
-                  <Text style={styles.buttonText}>↺ Rotate Left</Text>
+                  {isRotating ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>↺ Rotate Left</Text>}
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.rotateButton}
                   onPress={() => rotateConverted(90)}
                   disabled={isRotating}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
-                  <Text style={styles.buttonText}>↻ Rotate Right</Text>
+                  {isRotating ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>↻ Rotate Right</Text>}
                 </TouchableOpacity>
               </View>
             )}
@@ -368,12 +421,18 @@ export default function App() {
                 style={styles.shareButton}
                 onPress={saveToGallery}
                 disabled={isSaving}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <Text style={styles.buttonText}>{isSaving ? 'Saving…' : 'Save to Gallery'}</Text>
+                {isSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Save to Gallery</Text>}
               </TouchableOpacity>
             )}
 
-            <TouchableOpacity style={styles.shareButton} onPress={shareConverted}>
+            <TouchableOpacity
+              style={styles.shareButton}
+              onPress={shareConverted}
+              disabled={isConverting || isRotating || isSaving}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
               <Text style={styles.buttonText}>
                 {format === 'pdf' ? 'Share / Save to Files' : 'Share Image'}
               </Text>
@@ -381,21 +440,20 @@ export default function App() {
           </>
         )}
 
-        {(isConverting || isRotating || isSaving) && (
-          <View style={styles.loadingOverlay}>
-            <View style={styles.loadingCard}>
-              <LottieView
-                source={require('./assets/loader.json')}
-                autoPlay
-                loop
-                style={styles.lottie}
-              />
-              <Text style={styles.loadingText}>
-                {isConverting ? 'Converting…' : isRotating ? 'Rotating…' : 'Saving…'}
-              </Text>
-            </View>
-          </View>
-        )}
+        {/* Success / Fail modals (no overlay loader) */}
+        <SuccessModal
+          visible={successVisible}
+          title={successTitle}
+          message={successMessage}
+          onClose={() => setSuccessVisible(false)}
+        />
+
+        <FailModal
+          visible={failVisible}
+          title={failTitle}
+          message={failMessage}
+          onClose={() => setFailVisible(false)}
+        />
       </View>
     </ScrollView>
   );
@@ -544,41 +602,6 @@ const styles = StyleSheet.create({
   },
   formatTextSelected: {
     color: '#FFFFFF',
-  },
-  loadingOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  loadingCard: {
-    width: '75%',
-    maxWidth: 360,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 24,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 10,
-    elevation: 8,
-  },
-  lottie: {
-    width: 140,
-    height: 140,
-  },
-  loadingText: {
-    marginTop: 8,
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#002855',
   },
   logo: {
     width: 80,
