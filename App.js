@@ -5,7 +5,6 @@ import {
   Text,
   Image,
   StyleSheet,
-  Alert,
   TouchableOpacity,
   ActivityIndicator,
   ScrollView,
@@ -19,18 +18,16 @@ import * as MediaLibrary from 'expo-media-library';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as IntentLauncher from 'expo-intent-launcher';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import { PDFDocument } from 'pdf-lib';
 
 import SuccessModal from './components/SuccessModal';
 import FailModal from './components/FailModal';
-// ⛔️ Removed LoadingOverlay to avoid any chance of an invisible full-screen touch blocker
 
 const { height: screenHeight } = Dimensions.get('window');
 
 // Cache-busting helpers for Image preview vs. filesystem
 const bust = (p) => `${p}?t=${Date.now()}`; // append timestamp for RN Image cache
 const base = (u) => (u ? u.split('?')[0] : u); // strip ?t= for filesystem/sharing
-
-const API_URL = process.env.EXPO_PUBLIC_API_URL || "https://study-smart-api-1076720753233.us-west1.run.app";
 
 export default function App() {
   const [image, setImage] = useState(null);
@@ -49,20 +46,21 @@ export default function App() {
   const [failTitle, setFailTitle] = useState('');
   const [failMessage, setFailMessage] = useState('');
 
-  const blobToBase64 = (blob) =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result.split(',')[1]);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-
   const getMimeFromFormat = (f) => {
     if (f === 'jpg' || f === 'jpeg') return 'image/jpeg';
     if (f === 'png') return 'image/png';
     if (f === 'webp') return 'image/webp';
     if (f === 'pdf') return 'application/pdf';
     return `image/${f}`;
+  };
+
+  const getManipulatorFormat = (f) => {
+    if (f === 'png') return ImageManipulator.SaveFormat.PNG;
+    if (f === 'webp' && ImageManipulator.SaveFormat.WEBP) {
+      return ImageManipulator.SaveFormat.WEBP;
+    }
+    // default to JPEG (for jpg, jpeg, heic etc.)
+    return ImageManipulator.SaveFormat.JPEG;
   };
 
   const pickImage = async () => {
@@ -112,31 +110,54 @@ export default function App() {
     setIsConverting(true);
 
     try {
-      const filename = image.uri.split('/').pop();
-      const match = /\.(\w+)$/.exec(filename || '');
-      const mimeType = match ? `image/${match[1]}` : 'image';
+      let outputPath = `${FileSystem.documentDirectory}converted.${format}`;
 
-      const formData = new FormData();
-      formData.append('image', {
-        uri: image.uri,
-        name: filename || 'image',
-        type: mimeType,
-      });
+      if (format === 'pdf') {
+        // 1) First normalize the image to JPEG (handles HEIC, PNG, etc.)
+        const jpegResult = await ImageManipulator.manipulateAsync(
+          image.uri,
+          [],
+          { compress: 1, format: ImageManipulator.SaveFormat.JPEG }
+        );
 
-      const res = await fetch(`${API_URL}/api/convert?format=${format}`, {
-        method: 'POST',
-        body: formData,
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      if (!res.ok) throw new Error(`Server error: ${res.status}`);
+        // 2) Read the JPEG as bytes (local file, no network)
+        const response = await fetch(jpegResult.uri);
+        const arrayBuffer = await response.arrayBuffer();
+        const imageBytes = new Uint8Array(arrayBuffer);
 
-      const blob = await res.blob();
-      const base64 = await blobToBase64(blob);
+        // 3) Create a PDF and embed the JPEG
+        const pdfDoc = await PDFDocument.create();
+        const embeddedImage = await pdfDoc.embedJpg(imageBytes);
+        const { width, height } = embeddedImage;
 
-      const outputPath = `${FileSystem.documentDirectory}converted.${format}`;
-      await FileSystem.writeAsStringAsync(outputPath, base64, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
+        const page = pdfDoc.addPage([width, height]);
+        page.drawImage(embeddedImage, {
+          x: 0,
+          y: 0,
+          width,
+          height,
+        });
+
+        // 4) Save PDF as base64 and write to FileSystem
+        const pdfBase64 = await pdfDoc.saveAsBase64();
+        outputPath = `${FileSystem.documentDirectory}converted.pdf`;
+        await FileSystem.writeAsStringAsync(outputPath, pdfBase64, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+      } else {
+        // JPG / PNG / WEBP fully on-device using ImageManipulator
+        const toSaveFormat = getManipulatorFormat(format);
+
+        const manipulated = await ImageManipulator.manipulateAsync(
+          image.uri,
+          [],
+          { compress: 1, format: toSaveFormat }
+        );
+
+        // Copy to a stable path
+        outputPath = `${FileSystem.documentDirectory}converted.${format}`;
+        await FileSystem.copyAsync({ from: manipulated.uri, to: outputPath });
+      }
 
       // Bust cache so preview updates
       setConvertedUri(bust(outputPath));
@@ -337,7 +358,11 @@ export default function App() {
           </>
         )}
 
-        <TouchableOpacity style={styles.primaryButton} onPress={pickImage} disabled={isConverting || isRotating || isSaving}>
+        <TouchableOpacity
+          style={styles.primaryButton}
+          onPress={pickImage}
+          disabled={isConverting || isRotating || isSaving}
+        >
           <Text style={styles.buttonText}>Pick an Image</Text>
         </TouchableOpacity>
 
@@ -385,9 +410,20 @@ export default function App() {
         {convertedUri && (
           <>
             {format === 'pdf' ? (
-              <View style={[styles.imagePreview, { justifyContent: 'center', alignItems: 'center' }]}>
-                <Text style={{ color: '#1F2937', fontWeight: '600', marginBottom: 10 }}>PDF ready</Text>
-                <TouchableOpacity style={styles.shareButton} onPress={openPdf} disabled={isConverting || isRotating || isSaving}>
+              <View
+                style={[
+                  styles.imagePreview,
+                  { justifyContent: 'center', alignItems: 'center' },
+                ]}
+              >
+                <Text style={{ color: '#1F2937', fontWeight: '600', marginBottom: 10 }}>
+                  PDF ready
+                </Text>
+                <TouchableOpacity
+                  style={styles.shareButton}
+                  onPress={openPdf}
+                  disabled={isConverting || isRotating || isSaving}
+                >
                   <Text style={styles.buttonText}>Open PDF</Text>
                 </TouchableOpacity>
               </View>
@@ -403,7 +439,11 @@ export default function App() {
                   disabled={isRotating}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
-                  {isRotating ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>↺ Rotate Left</Text>}
+                  {isRotating ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.buttonText}>↺ Rotate Left</Text>
+                  )}
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.rotateButton}
@@ -411,7 +451,11 @@ export default function App() {
                   disabled={isRotating}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
-                  {isRotating ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>↻ Rotate Right</Text>}
+                  {isRotating ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.buttonText}>↻ Rotate Right</Text>
+                  )}
                 </TouchableOpacity>
               </View>
             )}
@@ -423,7 +467,11 @@ export default function App() {
                 disabled={isSaving}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                {isSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Save to Gallery</Text>}
+                {isSaving ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.buttonText}>Save to Gallery</Text>
+                )}
               </TouchableOpacity>
             )}
 
@@ -440,7 +488,7 @@ export default function App() {
           </>
         )}
 
-        {/* Success / Fail modals (no overlay loader) */}
+        {/* Success / Fail modals */}
         <SuccessModal
           visible={successVisible}
           title={successTitle}

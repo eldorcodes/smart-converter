@@ -2,7 +2,7 @@
   "expo": {
     "name": "Smart Converter",
     "slug": "smart-converter",
-    "version": "1.1.5",
+    "version": "1.1.7",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -18,7 +18,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "io.studybridge.smartconverter",
-      "buildNumber": "1.1.5",
+      "buildNumber": "1.1.7",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSPhotoLibraryAddUsageDescription": "We need permission to save your converted images to Photos.",
@@ -28,7 +28,7 @@
 
     "android": {
       "package": "io.studybridge.smartconverter",
-      "versionCode": 17,
+      "versionCode": 19,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
